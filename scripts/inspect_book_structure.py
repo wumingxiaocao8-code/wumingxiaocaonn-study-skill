@@ -3,9 +3,9 @@
 扫描 Markdown 书籍文件，提取章节结构并输出 JSON。
 用作模块拆分的辅助工具。运行失败时 Skill 应回退到手动方式。
 """
+import json
 import re
 import sys
-import json
 from pathlib import Path
 
 
@@ -21,10 +21,32 @@ def inspect_book(filepath: str) -> dict:
     chapters = []
     current_chapter = None
     current_section = None
+    current_subsection = None
     total_chars = 0
+
     chapter_pattern = re.compile(r"^#\s+(.+)$")
     section_pattern = re.compile(r"^##\s+(.+)$")
     subsection_pattern = re.compile(r"^###\s+(.+)$")
+
+    def finish_subsection():
+        nonlocal current_subsection
+        if current_subsection and current_section:
+            current_section["subsections"].append(current_subsection)
+        current_subsection = None
+
+    def finish_section():
+        nonlocal current_section
+        finish_subsection()
+        if current_section and current_chapter:
+            current_chapter["sections"].append(current_section)
+        current_section = None
+
+    def finish_chapter():
+        nonlocal current_chapter
+        finish_section()
+        if current_chapter:
+            chapters.append(current_chapter)
+        current_chapter = None
 
     for line in lines:
         ch_match = chapter_pattern.match(line)
@@ -32,19 +54,15 @@ def inspect_book(filepath: str) -> dict:
         sub_match = subsection_pattern.match(line)
 
         if ch_match:
-            if current_chapter:
-                current_chapter["char_count"] = current_chapter["char_count"]
-                chapters.append(current_chapter)
+            finish_chapter()
             current_chapter = {
                 "title": ch_match.group(1).strip(),
                 "level": 1,
                 "char_count": 0,
                 "sections": [],
             }
-            current_section = None
         elif sec_match and current_chapter:
-            if current_section:
-                current_chapter["sections"].append(current_section)
+            finish_section()
             current_section = {
                 "title": sec_match.group(1).strip(),
                 "level": 2,
@@ -52,42 +70,38 @@ def inspect_book(filepath: str) -> dict:
                 "subsections": [],
             }
         elif sub_match and current_section:
-            current_section["subsections"].append(
-                {"title": sub_match.group(1).strip(), "level": 3, "char_count": 0}
-            )
+            finish_subsection()
+            current_subsection = {
+                "title": sub_match.group(1).strip(),
+                "level": 3,
+                "char_count": 0,
+            }
         else:
             char_count = len(line)
             total_chars += char_count
+            if current_chapter:
+                current_chapter["char_count"] += char_count
             if current_section:
                 current_section["char_count"] += char_count
-            elif current_chapter:
-                current_chapter["char_count"] += char_count
+            if current_subsection:
+                current_subsection["char_count"] += char_count
 
-    # 处理最后一章
-    if current_section:
-        current_chapter["sections"].append(current_section)
-    if current_chapter:
-        current_chapter["char_count"] = current_chapter["char_count"]
-        chapters.append(current_chapter)
+    finish_chapter()
 
-    # 计算总字数（中文按字符数，英文按空格分词）
-    total_words_estimate = total_chars
-
-    result = {
+    return {
         "file": filepath,
         "total_chars": total_chars,
-        "total_words_estimate": total_words_estimate,
+        "total_words_estimate": total_chars,
         "chapter_count": len(chapters),
         "chapters": chapters,
     }
-    return result
 
 
 def suggest_modules(inspection: dict) -> list:
     """基于字数阈值给出模块拆分建议。"""
-    SHORT_THRESHOLD = 3000   # 短章合并阈值（字数）
-    LONG_THRESHOLD = 8000    # 长章考虑拆分
-    VERY_LONG_THRESHOLD = 12000  # 超长章必须拆分
+    short_threshold = 3000
+    long_threshold = 8000
+    very_long_threshold = 12000
 
     chapters = inspection.get("chapters", [])
     if not chapters:
@@ -98,86 +112,94 @@ def suggest_modules(inspection: dict) -> list:
     buffer_chapters = []
     buffer_chars = 0
 
-    for i, ch in enumerate(chapters):
-        ch_chars = ch.get("char_count", 0)
+    def flush_buffer(reason: str):
+        nonlocal module_id, buffer_chapters, buffer_chars
+        if not buffer_chapters:
+            return
+        modules.append(
+            {
+                "module_id": module_id,
+                "title": " + ".join(chapter["title"] for chapter in buffer_chapters),
+                "source": [chapter["title"] for chapter in buffer_chapters],
+                "char_count": buffer_chars,
+                "reason": reason,
+            }
+        )
+        module_id += 1
+        buffer_chapters = []
+        buffer_chars = 0
 
-        # 如果是短章，尝试和前后的短章缓冲合并
-        if ch_chars < SHORT_THRESHOLD:
-            buffer_chapters.append(ch)
-            buffer_chars += ch_chars
-            # 如果缓冲够了或者这是最后一章
-            if buffer_chars >= SHORT_THRESHOLD or i == len(chapters) - 1:
-                titles = [c["title"] for c in buffer_chapters]
-                modules.append({
-                    "module_id": module_id,
-                    "title": " + ".join(titles),
-                    "source": [c["title"] for c in buffer_chapters],
-                    "char_count": buffer_chars,
-                    "reason": "短章合并" if len(buffer_chapters) > 1 else "标准",
-                })
-                module_id += 1
-                buffer_chapters = []
-                buffer_chars = 0
-        else:
-            # 先处理缓冲区
-            if buffer_chapters:
-                titles = [c["title"] for c in buffer_chapters]
-                modules.append({
-                    "module_id": module_id,
-                    "title": " + ".join(titles),
-                    "source": [c["title"] for c in buffer_chapters],
-                    "char_count": buffer_chars,
-                    "reason": "短章合并",
-                })
-                module_id += 1
-                buffer_chapters = []
-                buffer_chars = 0
+    for index, chapter in enumerate(chapters):
+        chapter_chars = chapter.get("char_count", 0)
 
-            # 处理当前章
-            if ch_chars > VERY_LONG_THRESHOLD and ch.get("sections"):
-                # 超长章按节拆分
-                sections = ch["sections"]
-                sec_buffer = []
-                sec_chars = 0
-                for j, sec in enumerate(sections):
-                    sec_c = sec.get("char_count", 0)
-                    sec_buffer.append(sec)
-                    sec_chars += sec_c
-                    if sec_chars >= 4000 or j == len(sections) - 1:
-                        modules.append({
+        if chapter_chars < short_threshold:
+            buffer_chapters.append(chapter)
+            buffer_chars += chapter_chars
+            if buffer_chars >= short_threshold or index == len(chapters) - 1:
+                reason = "短章合并" if len(buffer_chapters) > 1 else "标准"
+                flush_buffer(reason)
+            continue
+
+        flush_buffer("短章合并")
+
+        if chapter_chars > very_long_threshold and chapter.get("sections"):
+            section_buffer = []
+            section_chars = 0
+            for section_index, section in enumerate(chapter["sections"]):
+                section_buffer.append(section)
+                section_chars += section.get("char_count", 0)
+                if section_chars >= 4000 or section_index == len(chapter["sections"]) - 1:
+                    modules.append(
+                        {
                             "module_id": module_id,
-                            "title": f"{ch['title']} — {' + '.join(s['title'] for s in sec_buffer)}",
-                            "source": [ch["title"]] + [s["title"] for s in sec_buffer],
-                            "char_count": sec_chars,
+                            "title": f"{chapter['title']} — {' + '.join(section['title'] for section in section_buffer)}",
+                            "source": [chapter["title"]]
+                            + [section["title"] for section in section_buffer],
+                            "char_count": section_chars,
                             "reason": "超长章拆分",
-                        })
-                        module_id += 1
-                        sec_buffer = []
-                        sec_chars = 0
-            elif ch_chars > LONG_THRESHOLD and ch.get("sections"):
-                modules.append({
+                        }
+                    )
+                    module_id += 1
+                    section_buffer = []
+                    section_chars = 0
+        elif chapter_chars > long_threshold and chapter.get("sections"):
+            modules.append(
+                {
                     "module_id": module_id,
-                    "title": ch["title"],
-                    "source": [ch["title"]],
-                    "char_count": ch_chars,
+                    "title": chapter["title"],
+                    "source": [chapter["title"]],
+                    "char_count": chapter_chars,
                     "reason": "长章（建议考虑拆分，已按节结构保留）",
                     "sections": [
-                        {"title": s["title"], "char_count": s["char_count"]}
-                        for s in ch["sections"]
+                        {"title": section["title"], "char_count": section["char_count"]}
+                        for section in chapter["sections"]
                     ],
-                })
-                module_id += 1
-            else:
-                modules.append({
+                }
+            )
+            module_id += 1
+        else:
+            modules.append(
+                {
                     "module_id": module_id,
-                    "title": ch["title"],
-                    "source": [ch["title"]],
-                    "char_count": ch_chars,
+                    "title": chapter["title"],
+                    "source": [chapter["title"]],
+                    "char_count": chapter_chars,
                     "reason": "标准",
-                })
-                module_id += 1
+                }
+            )
+            module_id += 1
 
     return modules
+
+
+def print_json(data: dict):
+    text = json.dumps(data, ensure_ascii=False, indent=2)
+    encoding = sys.stdout.encoding or "utf-8"
+    try:
+        text.encode(encoding)
+    except UnicodeEncodeError:
+        text = json.dumps(data, ensure_ascii=True, indent=2)
+    print(text)
 
 
 def main():
@@ -192,10 +214,8 @@ def main():
         print(inspection["error"], file=sys.stderr)
         sys.exit(1)
 
-    modules = suggest_modules(inspection)
-    inspection["suggested_modules"] = modules
-
-    print(json.dumps(inspection, ensure_ascii=False, indent=2))
+    inspection["suggested_modules"] = suggest_modules(inspection)
+    print_json(inspection)
 
 
 if __name__ == "__main__":

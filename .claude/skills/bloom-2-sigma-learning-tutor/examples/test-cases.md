@@ -9,7 +9,7 @@
 **触发**：
 ```
 用户：开始学习这本书
-（当前目录：reading/货币金融学/，内含 货币金融学.md）
+（当前目录：项目内书籍目录，例如 economic/货币金融学/，内含 货币金融学.md）
 ```
 
 **Skill 预期行为**：
@@ -18,16 +18,16 @@
 3. 读取 md 文件前 200 行，分析目录结构
 4. 输出模块拆分建议（按 module-splitting.md 规则）
 5. 等待用户确认拆分方案
-6. 用户确认后，创建 `reading/learning-records/货币金融学/` 目录
+6. 用户确认后，创建 `learning-records/货币金融学/` 目录
 7. 写入 module-plan.md、book-index.md、current-state.md
 8. 更新或创建 global-index.md
 9. 进入模块 1 的诊断阶段，出 3-5 道题
 
 **预期文件操作**：
-- 创建 `reading/learning-records/货币金融学/module-plan.md`
-- 创建 `reading/learning-records/货币金融学/book-index.md`
-- 创建 `reading/learning-records/货币金融学/current-state.md`
-- 创建或更新 `reading/learning-records/global-index.md`
+- 创建 `learning-records/货币金融学/module-plan.md`
+- 创建 `learning-records/货币金融学/book-index.md`
+- 创建 `learning-records/货币金融学/current-state.md`
+- 创建或更新 `learning-records/global-index.md`
 
 ---
 
@@ -40,7 +40,7 @@
 ```
 
 **Skill 预期行为**：
-1. 读取 `reading/learning-records/global-index.md` 找进行中的书
+1. 读取 `learning-records/global-index.md` 找进行中的书
 2. 读取对应书的 `current-state.md`
 3. 读取 `book-index.md`
 4. 读取 `module-plan.md`
@@ -84,7 +84,7 @@
 **不应发生**：
 - 出模块测试题
 - 写入大量记录文件
-- 走 7 步完整循环
+- 走 ACTIVATE/ORIENT + 7 阶段完整循环
 
 ---
 

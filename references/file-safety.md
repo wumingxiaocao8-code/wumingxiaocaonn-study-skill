@@ -2,13 +2,17 @@
 
 ## 写入范围限制
 
-### 学习记录：仅限 reading/learning-records/
+### 路径基准
 
-所有学习档案（global-index、book-index、module-plan、sessions、mistakes、review-queue、concept-map、current-state）只能写入 `reading/learning-records/` 及其子目录。
+本项目工作区根目录通常就是 `reading`。实际读写路径以项目根为基准，不得在项目根下重复添加 `reading/` 前缀。写入前必须解析绝对路径，并确认目标仍在项目根内。
+
+### 学习记录：仅限 learning-records/
+
+所有学习档案（global-index、book-index、module-plan、sessions、mistakes、review-queue、concept-map、current-state）只能写入 `learning-records/` 及其子目录。
 
 ### 书籍源文件：在用户确认后可写入当前书籍目录
 
-书籍源文件的拆分结果写入 `reading/<书名>/chapters/`。
+书籍源文件的拆分结果只能写入用户确认的项目内书籍目录，例如 `economic/<书名>/chapters/` 或 `history/<书名>/chapters/`。
 写入前必须：
 1. 向用户说明将要创建的目录和文件
 2. 获得用户确认
@@ -26,7 +30,7 @@
 
 ### 1. 验证目标路径
 
-每次写入前确认路径在允许范围内（`reading/learning-records/` 或 `reading/<书名>/chapters/`）。
+每次写入前确认路径在允许范围内（`learning-records/` 或用户确认的项目内书籍目录）。
 
 ### 2. 先读后写
 
@@ -76,6 +80,6 @@
 |----------|------|
 | rm / delete | 不得删除用户的任何文件 |
 | 覆盖源文件 | 不得覆盖 epub/md 源文件 |
-| 项目外写入 | 不得在 reading/ 目录外创建或修改文件 |
+| 项目外写入 | 不得在项目根目录外创建或修改文件 |
 | 无提示覆盖 | 不得在用户不知情的情况下覆盖已有内容 |
 | 批量操作 | 不得一次性大范围修改多个文件而不逐一说明 |

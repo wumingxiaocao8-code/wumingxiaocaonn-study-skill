@@ -1,3 +1,6 @@
 .claude/settings.local.json
 __pycache__/
 *.pyc
+economic/
+learning-records/
+history/
